@@ -3,7 +3,7 @@ const pool = require('../db');
 
 const router = express.Router();
 
-// Listar todos os times
+// Lista todos os times
 router.get('/', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM times ORDER BY id');

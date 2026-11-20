@@ -5,19 +5,17 @@ const router = express.Router();
 
 const CAMPOS_EV = ['ev_hp', 'ev_atk', 'ev_def', 'ev_spa', 'ev_spd', 'ev_spe'];
 
-const EASTER_EGGS = [258, 259, 260, 303]; // linha do Swampert + Mawile
-
 function pokemonPermitido(id) {
-  return (id >= 650 && id <= 721) || EASTER_EGGS.includes(id);
+  return Number.isInteger(id) && id >= 1 && id <= 1025;
 }
 
-// Valida e normaliza os dados recebidos. Devolve { erro } ou { dados }
+// Valida os dados recebidos
 function validar(body) {
   const pokemon_id = Number(body.pokemon_id);
   const nivel = body.nivel === undefined ? 50 : Number(body.nivel);
 
-  if (!Number.isInteger(pokemon_id) || !pokemonPermitido(pokemon_id)) {
-    return { erro: 'pokemon_id inválido: use Pokémon de Kalos (650 a 721) ou os extras permitidos' };
+  if (!pokemonPermitido(pokemon_id)) {
+    return { erro: 'pokemon_id inválido' };
   }
   if (!Number.isInteger(nivel) || nivel < 1 || nivel > 100) {
     return { erro: 'O nível deve ser entre 1 e 100' };
@@ -41,14 +39,16 @@ function validar(body) {
     dados: {
       pokemon_id,
       apelido: body.apelido ? String(body.apelido).trim() : null,
+      shiny: Boolean(body.shiny),
+      habilidade: body.habilidade ? String(body.habilidade).trim() : null,
       nivel,
-      natureza: body.natureza || null,
+      natureza: body.natureza ? String(body.natureza).trim() : null,
       ...evs,
     },
   };
 }
 
-// Listar os pokémon de um time
+// Lista os pokémon de um time
 router.get('/times/:id/pokemon', async (req, res) => {
   try {
     const result = await pool.query(
@@ -62,7 +62,7 @@ router.get('/times/:id/pokemon', async (req, res) => {
   }
 });
 
-// Adicionar pokémon ao time (máximo 6)
+// Adiciona pokémon ao time
 router.post('/times/:id/pokemon', async (req, res) => {
   const { erro, dados } = validar(req.body);
   if (erro) return res.status(400).json({ erro });
@@ -83,13 +83,14 @@ router.post('/times/:id/pokemon', async (req, res) => {
 
     const result = await pool.query(
       `INSERT INTO time_pokemon
-        (time_id, pokemon_id, apelido, nivel, natureza,
+        (time_id, pokemon_id, apelido, shiny, habilidade, nivel, natureza,
          ev_hp, ev_atk, ev_def, ev_spa, ev_spd, ev_spe)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING *`,
       [
-        req.params.id, dados.pokemon_id, dados.apelido, dados.nivel, dados.natureza,
-        dados.ev_hp, dados.ev_atk, dados.ev_def, dados.ev_spa, dados.ev_spd, dados.ev_spe,
+        req.params.id, dados.pokemon_id, dados.apelido, dados.shiny, dados.habilidade,
+        dados.nivel, dados.natureza, dados.ev_hp, dados.ev_atk, dados.ev_def,
+        dados.ev_spa, dados.ev_spd, dados.ev_spe,
       ]
     );
     res.status(201).json(result.rows[0]);
@@ -99,7 +100,7 @@ router.post('/times/:id/pokemon', async (req, res) => {
   }
 });
 
-// Editar pokémon (o front deve enviar todos os campos)
+// Edita pokémon
 router.put('/time-pokemon/:id', async (req, res) => {
   const { erro, dados } = validar(req.body);
   if (erro) return res.status(400).json({ erro });
@@ -107,12 +108,12 @@ router.put('/time-pokemon/:id', async (req, res) => {
   try {
     const result = await pool.query(
       `UPDATE time_pokemon SET
-        pokemon_id=$1, apelido=$2, nivel=$3, natureza=$4,
-        ev_hp=$5, ev_atk=$6, ev_def=$7, ev_spa=$8, ev_spd=$9, ev_spe=$10
-       WHERE id=$11
+        pokemon_id=$1, apelido=$2, shiny=$3, habilidade=$4, nivel=$5, natureza=$6,
+        ev_hp=$7, ev_atk=$8, ev_def=$9, ev_spa=$10, ev_spd=$11, ev_spe=$12
+       WHERE id=$13
        RETURNING *`,
       [
-        dados.pokemon_id, dados.apelido, dados.nivel, dados.natureza,
+        dados.pokemon_id, dados.apelido, dados.shiny, dados.habilidade, dados.nivel, dados.natureza,
         dados.ev_hp, dados.ev_atk, dados.ev_def, dados.ev_spa, dados.ev_spd, dados.ev_spe,
         req.params.id,
       ]
@@ -127,7 +128,7 @@ router.put('/time-pokemon/:id', async (req, res) => {
   }
 });
 
-// Remover pokémon do time
+// Remove pokémon
 router.delete('/time-pokemon/:id', async (req, res) => {
   try {
     const result = await pool.query(
