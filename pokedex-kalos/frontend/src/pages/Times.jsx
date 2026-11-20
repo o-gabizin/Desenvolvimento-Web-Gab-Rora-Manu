@@ -1,658 +1,563 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   API,
-  TOTAL_POKEMONS,
-  REGIOES,
+  TIPOS,
   CAMPOS_EV,
-  regiaoDoPokemon,
-  imagemDoPokemon,
+  ICONES_TIME,
+  obterRegiaoPorId,
+  obterImagemPokemon,
+  obterImagemIconeTime,
+  carregarCatalogoCompleto,
+  buscarDetalhesPokemon,
 } from '../constants';
 
+const STAT_PARA_EV = {
+  hp: 'ev_hp',
+  attack: 'ev_atk',
+  defense: 'ev_def',
+  'special-attack': 'ev_spa',
+  'special-defense': 'ev_spd',
+  speed: 'ev_spe',
+};
+
 function Times() {
+  // 1. Estados dos times
   const [times, setTimes] = useState([]);
-  const [nome, setNome] = useState('');
+  const [nomeTime, setNomeTime] = useState('');
   const [treinador, setTreinador] = useState('');
-  const [editandoId, setEditandoId] = useState(null);
-  const [erro, setErro] = useState('');
+  const [iconeTime, setIconeTime] = useState('poke-ball');
+  const [timeEmEdicaoId, setTimeEmEdicaoId] = useState(null);
+  const [erroGeral, setErroGeral] = useState('');
 
-  // Catálogo completo (1 a 1025) e cache de habilidades por espécie
+  // 2. Catálogo geral (nomes e tipos) e cache de habilidades/stats por espécie
   const [catalogo, setCatalogo] = useState([]);
-  const [habilidadesCache, setHabilidadesCache] = useState({});
+  const [detalhesPorPokemon, setDetalhesPorPokemon] = useState({});
 
-  // Time atualmente aberto para gerenciar Pokémon
-  const [timeAtivoId, setTimeAtivoId] = useState(null);
-  const [pokemonsDoTime, setPokemonsDoTime] = useState([]);
-  const [erroPokemon, setErroPokemon] = useState('');
+  // 3. Estados do time aberto (membros da equipe)
+  const [timeAbertoId, setTimeAbertoId] = useState(null);
+  const [membros, setMembros] = useState([]);
+  const [erroMembro, setErroMembro] = useState('');
 
-  // Formulário de adicionar Pokémon ao time
-  const [regiaoSelect, setRegiaoSelect] = useState('todas');
-  const [novoPokemonId, setNovoPokemonId] = useState(1);
-  const [novoApelido, setNovoApelido] = useState('');
-  const [novaHabilidade, setNovaHabilidade] = useState('');
-  const [novoShiny, setNovoShiny] = useState(false);
-
-  // Formulário de edição de um Pokémon do time (apelido, shiny, habilidade, EVs)
-  const [editandoPokemonId, setEditandoPokemonId] = useState(null);
-  const [formPokemon, setFormPokemon] = useState({
-    apelido: '',
-    shiny: false,
-    habilidade: '',
-    nivel: 50,
-    ev_hp: 0,
-    ev_atk: 0,
-    ev_def: 0,
-    ev_spa: 0,
-    ev_spd: 0,
-    ev_spe: 0,
-  });
-
-  async function garantirHabilidades(pokemonId) {
-    if (habilidadesCache[pokemonId]) {
-      return habilidadesCache[pokemonId];
-    }
-    try {
-      const resp = await fetch(`https://pokeapi.co/api/v2/pokemon/${pokemonId}`);
-      if (!resp.ok) return [];
-      const dados = await resp.json();
-      const lista = dados.abilities.map((a) => ({
-        nome: a.ability.name,
-        oculta: a.is_hidden,
-      }));
-      setHabilidadesCache((prev) => ({ ...prev, [pokemonId]: lista }));
-      return lista;
-    } catch {
-      return [];
-    }
-  }
+  // 4. Estados do formulário de edição de um membro da equipe
+  const [membroEmEdicaoId, setMembroEmEdicaoId] = useState(null);
+  const [dadosEdicao, setDadosEdicao] = useState({});
 
   async function carregarTimes() {
     try {
       const resposta = await fetch(`${API}/times`);
       if (!resposta.ok) throw new Error();
       setTimes(await resposta.json());
-      setErro('');
+      setErroGeral('');
     } catch {
-      setErro('Não foi possível falar com a API. O back-end está rodando?');
+      setErroGeral('Erro ao conectar com a API. Verifique se o back-end está rodando.');
     }
   }
 
-  async function carregarCatalogo() {
-    try {
-      const resposta = await fetch(
-        `https://pokeapi.co/api/v2/pokemon?limit=${TOTAL_POKEMONS}&offset=0`
-      );
-      if (!resposta.ok) return;
-
-      const dados = await resposta.json();
-      const lista = dados.results.map((p, i) => {
-        const partes = p.url.split('/').filter(Boolean);
-        const id = Number(partes[partes.length - 1]) || i + 1;
-        return {
-          id,
-          nome: p.name,
-          regiaoId: regiaoDoPokemon(id).id,
-        };
-      });
-      setCatalogo(lista);
-    } catch {
-      // Se falhar, ainda exibe os IDs normalmente
+  async function carregarMembrosDoTime(timeId) {
+    const resposta = await fetch(`${API}/times/${timeId}/pokemon`);
+    if (resposta.ok) {
+      setMembros(await resposta.json());
     }
   }
 
-  async function carregarPokemonsDoTime(timeId) {
-    try {
-      const resposta = await fetch(`${API}/times/${timeId}/pokemon`);
-      if (!resposta.ok) throw new Error();
-      setPokemonsDoTime(await resposta.json());
-      setErroPokemon('');
-    } catch {
-      setErroPokemon('Erro ao carregar os Pokémon deste time.');
+  async function garantirDetalhesEspecie(pokemonId) {
+    if (detalhesPorPokemon[pokemonId]) {
+      return detalhesPorPokemon[pokemonId];
     }
+
+    const dados = await buscarDetalhesPokemon(pokemonId);
+    const info = {
+      habilidades: dados.abilities.map((item) => ({
+        nome: item.ability.name,
+        oculta: item.is_hidden,
+      })),
+      stats: dados.stats.map((item) => ({
+        chaveEv: STAT_PARA_EV[item.stat.name],
+        valor: item.base_stat,
+      })),
+    };
+
+    setDetalhesPorPokemon((anterior) => ({
+      ...anterior,
+      [pokemonId]: info,
+    }));
+
+    return info;
   }
 
   useEffect(() => {
     carregarTimes();
-    carregarCatalogo();
+    carregarCatalogoCompleto()
+      .then((lista) => setCatalogo(lista))
+      .catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!timeAtivoId) return;
-    let ativo = true;
-    garantirHabilidades(novoPokemonId).then((lista) => {
-      if (ativo) {
-        setNovaHabilidade(lista[0]?.nome || '');
-      }
-    });
-    return () => {
-      ativo = false;
-    };
-  }, [novoPokemonId, timeAtivoId]);
+  // === Ações do CRUD de Times ===
 
-  function aoMudarRegiaoSelect(novaRegiao) {
-    setRegiaoSelect(novaRegiao);
-    if (novaRegiao === 'todas') {
-      setNovoPokemonId(1);
-    } else {
-      const encontrada = REGIOES.find((r) => r.id === novaRegiao);
-      if (encontrada) setNovoPokemonId(encontrada.inicio);
-    }
+  function iniciarEdicaoTime(time) {
+    setTimeEmEdicaoId(time.id);
+    setNomeTime(time.nome);
+    setTreinador(time.treinador || '');
+    setIconeTime(time.icone || 'poke-ball');
   }
 
-  function limparFormularioTime() {
-    setNome('');
+  function cancelarEdicaoTime() {
+    setTimeEmEdicaoId(null);
+    setNomeTime('');
     setTreinador('');
-    setEditandoId(null);
+    setIconeTime('poke-ball');
   }
 
   async function salvarTime(e) {
     e.preventDefault();
-    if (nome.trim() === '') {
-      setErro('O nome do time é obrigatório');
+    if (!nomeTime.trim()) {
+      setErroGeral('Informe o nome do time.');
       return;
     }
 
-    const url = editandoId ? `${API}/times/${editandoId}` : `${API}/times`;
-    const metodo = editandoId ? 'PUT' : 'POST';
+    const url = timeEmEdicaoId ? `${API}/times/${timeEmEdicaoId}` : `${API}/times`;
+    const metodo = timeEmEdicaoId ? 'PUT' : 'POST';
 
-    try {
-      const resposta = await fetch(url, {
-        method: metodo,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nome, treinador }),
-      });
-      if (!resposta.ok) {
-        const dados = await resposta.json();
-        throw new Error(dados.erro || 'Erro ao salvar');
-      }
-      limparFormularioTime();
-      carregarTimes();
-    } catch (err) {
-      setErro(err.message);
+    const resposta = await fetch(url, {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome: nomeTime, treinador, icone: iconeTime }),
+    });
+
+    if (!resposta.ok) {
+      setErroGeral('Erro ao salvar o time.');
+      return;
     }
+
+    cancelarEdicaoTime();
+    carregarTimes();
   }
 
-  function comecarEdicaoTime(time) {
-    setEditandoId(time.id);
-    setNome(time.nome);
-    setTreinador(time.treinador || '');
+  async function duplicarTime(time) {
+    try {
+      const respMembros = await fetch(`${API}/times/${time.id}/pokemon`);
+      const listaMembros = respMembros.ok ? await respMembros.json() : [];
+
+      const respNovoTime = await fetch(`${API}/times`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome: `${time.nome} (Cópia)`,
+          treinador: time.treinador || '',
+          icone: time.icone || 'poke-ball',
+        }),
+      });
+
+      if (!respNovoTime.ok) throw new Error();
+      const novoTime = await respNovoTime.json();
+
+      for (const membro of listaMembros) {
+        await fetch(`${API}/times/${novoTime.id}/pokemon`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            pokemon_id: membro.pokemon_id,
+            apelido: membro.apelido,
+            shiny: membro.shiny,
+            habilidade: membro.habilidade,
+            nivel: membro.nivel,
+            ev_hp: membro.ev_hp,
+            ev_atk: membro.ev_atk,
+            ev_def: membro.ev_def,
+            ev_spa: membro.ev_spa,
+            ev_spd: membro.ev_spd,
+            ev_spe: membro.ev_spe,
+          }),
+        });
+      }
+
+      carregarTimes();
+    } catch {
+      setErroGeral('Erro ao duplicar o time.');
+    }
   }
 
   async function excluirTime(id) {
     if (!window.confirm('Excluir este time e todos os Pokémon dele?')) return;
-    try {
-      const resposta = await fetch(`${API}/times/${id}`, { method: 'DELETE' });
-      if (!resposta.ok) throw new Error();
-      if (timeAtivoId === id) {
-        setTimeAtivoId(null);
-        setPokemonsDoTime([]);
-      }
-      carregarTimes();
-    } catch {
-      setErro('Erro ao excluir o time');
-    }
+
+    await fetch(`${API}/times/${id}`, { method: 'DELETE' });
+    if (timeAbertoId === id) setTimeAbertoId(null);
+    carregarTimes();
   }
 
-  function alternarTimeAtivo(id) {
-    if (timeAtivoId === id) {
-      setTimeAtivoId(null);
-      setPokemonsDoTime([]);
-      setEditandoPokemonId(null);
+  function alternarAberturaTime(id) {
+    if (timeAbertoId === id) {
+      setTimeAbertoId(null);
       return;
     }
-    setTimeAtivoId(id);
-    setEditandoPokemonId(null);
-    setErroPokemon('');
-    carregarPokemonsDoTime(id);
+    setTimeAbertoId(id);
+    setMembroEmEdicaoId(null);
+    setErroMembro('');
+    carregarMembrosDoTime(id);
   }
 
-  async function adicionarPokemon(e) {
-    e.preventDefault();
-    setErroPokemon('');
-    try {
-      const resposta = await fetch(`${API}/times/${timeAtivoId}/pokemon`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pokemon_id: Number(novoPokemonId),
-          apelido: novoApelido.trim() || null,
-          shiny: novoShiny,
-          habilidade: novaHabilidade || null,
-        }),
-      });
-      const dados = await resposta.json();
-      if (!resposta.ok) {
-        throw new Error(dados.erro || 'Erro ao adicionar Pokémon');
-      }
-      setNovoApelido('');
-      setNovoShiny(false);
-      carregarPokemonsDoTime(timeAtivoId);
-    } catch (err) {
-      setErroPokemon(err.message);
-    }
-  }
+  // === Ações de Edição, Ordenação e Atalhos dos Pokémon ===
 
-  async function comecarEdicaoPokemon(tp) {
-    setEditandoPokemonId(tp.id);
-    setErroPokemon('');
-    setFormPokemon({
-      apelido: tp.apelido || '',
-      shiny: Boolean(tp.shiny),
-      habilidade: tp.habilidade || '',
-      nivel: tp.nivel ?? 50,
-      ev_hp: tp.ev_hp ?? 0,
-      ev_atk: tp.ev_atk ?? 0,
-      ev_def: tp.ev_def ?? 0,
-      ev_spa: tp.ev_spa ?? 0,
-      ev_spd: tp.ev_spd ?? 0,
-      ev_spe: tp.ev_spe ?? 0,
+  async function iniciarEdicaoMembro(membro) {
+    setMembroEmEdicaoId(membro.id);
+    setErroMembro('');
+    setDadosEdicao({
+      ...membro,
+      apelido: membro.apelido || '',
+      habilidade: membro.habilidade || '',
     });
-    await garantirHabilidades(tp.pokemon_id);
+
+    await garantirDetalhesEspecie(membro.pokemon_id).catch(() => {});
   }
 
-  function atualizarEv(campo, valorBruto) {
-    const numero = valorBruto === '' ? 0 : Number(valorBruto);
-    setFormPokemon((prev) => ({
-      ...prev,
-      [campo]: Number.isNaN(numero) ? 0 : numero,
+  function moverMembro(indiceAtual, direcao) {
+    const novoIndice = indiceAtual + direcao;
+    if (novoIndice < 0 || novoIndice >= membros.length) return;
+
+    const copia = [...membros];
+    const [removido] = copia.splice(indiceAtual, 1);
+    copia.splice(novoIndice, 0, removido);
+    setMembros(copia);
+  }
+
+  function zerarEvsEdicao() {
+    setDadosEdicao((anterior) => ({
+      ...anterior,
+      ev_hp: 0,
+      ev_atk: 0,
+      ev_def: 0,
+      ev_spa: 0,
+      ev_spd: 0,
+      ev_spe: 0,
     }));
   }
 
-  const totalEvs = CAMPOS_EV.reduce((soma, c) => soma + Number(formPokemon[c.chave] || 0), 0);
+  async function distribuirEvsAutomatico() {
+    try {
+      const info = await garantirDetalhesEspecie(dadosEdicao.pokemon_id);
+      const ordenados = [...info.stats].sort((a, b) => b.valor - a.valor);
 
-  async function salvarEdicaoPokemon(e, tp) {
+      const novosEvs = {
+        ev_hp: 0,
+        ev_atk: 0,
+        ev_def: 0,
+        ev_spa: 0,
+        ev_spd: 0,
+        ev_spe: 0,
+      };
+
+      if (ordenados[0]) novosEvs[ordenados[0].chaveEv] = 252;
+      if (ordenados[1]) novosEvs[ordenados[1].chaveEv] = 252;
+      if (ordenados[2]) novosEvs[ordenados[2].chaveEv] = 4;
+
+      setDadosEdicao((anterior) => ({ ...anterior, ...novosEvs }));
+    } catch {
+      setErroMembro('Não foi possível calcular os EVs automáticos.');
+    }
+  }
+
+  const somaEvsEdicao = CAMPOS_EV.reduce(
+    (soma, campo) => soma + Number(dadosEdicao[campo.chave] || 0),
+    0
+  );
+
+  async function salvarEdicaoMembro(e) {
     e.preventDefault();
-    setErroPokemon('');
-
-    if (totalEvs > 510) {
-      setErroPokemon(`A soma dos EVs não pode passar de 510 (atual: ${totalEvs})`);
+    if (somaEvsEdicao > 510) {
+      setErroMembro(`A soma dos EVs não pode passar de 510 (atual: ${somaEvsEdicao}).`);
       return;
     }
 
-    try {
-      const resposta = await fetch(`${API}/time-pokemon/${tp.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pokemon_id: tp.pokemon_id,
-          apelido: formPokemon.apelido.trim() || null,
-          shiny: formPokemon.shiny,
-          habilidade: formPokemon.habilidade || null,
-          nivel: Number(formPokemon.nivel),
-          natureza: tp.natureza || null,
-          ev_hp: Number(formPokemon.ev_hp),
-          ev_atk: Number(formPokemon.ev_atk),
-          ev_def: Number(formPokemon.ev_def),
-          ev_spa: Number(formPokemon.ev_spa),
-          ev_spd: Number(formPokemon.ev_spd),
-          ev_spe: Number(formPokemon.ev_spe),
-        }),
-      });
-      const dados = await resposta.json();
-      if (!resposta.ok) {
-        throw new Error(dados.erro || 'Erro ao editar Pokémon');
-      }
-      setEditandoPokemonId(null);
-      carregarPokemonsDoTime(timeAtivoId);
-    } catch (err) {
-      setErroPokemon(err.message);
+    const resposta = await fetch(`${API}/time-pokemon/${membroEmEdicaoId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...dadosEdicao,
+        apelido: dadosEdicao.apelido.trim() || null,
+        habilidade: dadosEdicao.habilidade || null,
+        nivel: Number(dadosEdicao.nivel),
+      }),
+    });
+
+    const dados = await resposta.json();
+    if (!resposta.ok) {
+      setErroMembro(dados.erro || 'Erro ao salvar alterações.');
+      return;
     }
+
+    setMembroEmEdicaoId(null);
+    carregarMembrosDoTime(timeAbertoId);
   }
 
-  async function removerPokemon(pokemonRowId) {
+  async function removerMembro(membroId) {
     if (!window.confirm('Remover este Pokémon do time?')) return;
-    try {
-      const resposta = await fetch(`${API}/time-pokemon/${pokemonRowId}`, {
-        method: 'DELETE',
-      });
-      if (!resposta.ok) throw new Error();
-      if (editandoPokemonId === pokemonRowId) {
-        setEditandoPokemonId(null);
-      }
-      carregarPokemonsDoTime(timeAtivoId);
-    } catch {
-      setErroPokemon('Erro ao remover Pokémon');
+
+    await fetch(`${API}/time-pokemon/${membroId}`, { method: 'DELETE' });
+    carregarMembrosDoTime(timeAbertoId);
+  }
+
+  const contagemTiposEquipe = {};
+  for (const membro of membros) {
+    const especie = catalogo.find((p) => p.id === membro.pokemon_id);
+    for (const tipo of especie?.tipos || []) {
+      contagemTiposEquipe[tipo] = (contagemTiposEquipe[tipo] || 0) + 1;
     }
   }
-
-  function nomeDaEspecie(pokemonId) {
-    const encontrado = catalogo.find((c) => c.id === pokemonId);
-    return encontrado ? encontrado.nome : `Pokémon #${pokemonId}`;
-  }
-
-  const catalogoFiltrado =
-    regiaoSelect === 'todas'
-      ? catalogo
-      : catalogo.filter((p) => p.regiaoId === regiaoSelect);
-
-  const habilidadesNovoPokemon = habilidadesCache[novoPokemonId] || [];
 
   return (
-    <div style={{ padding: 20 }}>
+    <div className="container">
       <h1>Meus Times</h1>
 
-      <form
-        onSubmit={salvarTime}
-        style={{
-          background: 'white',
-          padding: 16,
-          borderRadius: 12,
-          display: 'flex',
-          gap: 12,
-          flexWrap: 'wrap',
-          marginBottom: 20,
-        }}
-      >
-        <input
-          placeholder="Nome do time"
-          value={nome}
-          maxLength={50}
-          onChange={(e) => setNome(e.target.value)}
-          style={{ padding: 8 }}
-        />
-        <input
-          placeholder="Treinador"
-          value={treinador}
-          maxLength={50}
-          onChange={(e) => setTreinador(e.target.value)}
-          style={{ padding: 8 }}
-        />
-        <button type="submit" style={{ padding: '8px 16px' }}>
-          {editandoId ? 'Salvar alterações' : 'Criar time'}
-        </button>
-        {editandoId && (
-          <button type="button" onClick={limparFormularioTime} style={{ padding: '8px 16px' }}>
-            Cancelar
-          </button>
-        )}
-      </form>
+      {/* Formulário para criar ou editar um time */}
+      <form onSubmit={salvarTime} className="card" style={{ marginBottom: 20, display: 'grid', gap: 12 }}>
+        <div className="linha">
+          <input
+            placeholder="Nome do time"
+            value={nomeTime}
+            onChange={(e) => setNomeTime(e.target.value)}
+          />
+          <input
+            placeholder="Treinador"
+            value={treinador}
+            onChange={(e) => setTreinador(e.target.value)}
+          />
+          <button type="submit">{timeEmEdicaoId ? 'Salvar' : 'Criar time'}</button>
+          {timeEmEdicaoId && (
+            <button type="button" onClick={cancelarEdicaoTime}>
+              Cancelar
+            </button>
+          )}
+        </div>
 
-      {erro && <p style={{ color: '#c0392b' }}>{erro}</p>}
-
-      {times.length === 0 && !erro && <p>Nenhum time criado ainda.</p>}
-
-      <div style={{ display: 'grid', gap: 16 }}>
-        {times.map((t) => {
-          const aberto = timeAtivoId === t.id;
-
-          return (
-            <div
-              key={t.id}
-              style={{
-                background: 'white',
-                padding: 16,
-                borderRadius: 12,
-                boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
-              }}
-            >
-              <div
+        {/* Seletor visual de Ícone da Equipe */}
+        <div className="linha" style={{ gap: 6 }}>
+          <span style={{ fontSize: 13, color: '#666' }}>Ícone:</span>
+          {ICONES_TIME.map((item) => {
+            const selecionado = iconeTime === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                title={item.nome}
+                onClick={() => setIconeTime(item.id)}
                 style={{
+                  padding: 4,
                   display: 'flex',
-                  justifyContent: 'space-between',
                   alignItems: 'center',
-                  flexWrap: 'wrap',
-                  gap: 12,
+                  justifyContent: 'center',
+                  border: selecionado ? '2px solid #c0392b' : '1px solid #ddd',
+                  background: selecionado ? '#fdecea' : '#fff',
                 }}
               >
-                <div>
-                  <strong>{t.nome}</strong>
-                  <div style={{ color: '#666' }}>Treinador: {t.treinador || '—'}</div>
+                <img
+                  src={obterImagemIconeTime(item.id)}
+                  alt={item.nome}
+                  width="26"
+                  height="26"
+                />
+              </button>
+            );
+          })}
+        </div>
+      </form>
+
+      {erroGeral && <p className="msg-erro">{erroGeral}</p>}
+
+      {/* Lista de Times */}
+      <div style={{ display: 'grid', gap: 14 }}>
+        {times.map((time) => {
+          const estaAberto = timeAbertoId === time.id;
+
+          return (
+            <div key={time.id} className="card">
+              <div className="espaco-entre">
+                <div className="linha" style={{ gap: 12 }}>
+                  <img
+                    src={obterImagemIconeTime(time.icone)}
+                    alt="Ícone do time"
+                    width="36"
+                    height="36"
+                  />
+                  <div>
+                    <strong>{time.nome}</strong>
+                    <div style={{ fontSize: 13, color: '#666' }}>
+                      Treinador: {time.treinador || '—'}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => alternarTimeAtivo(t.id)}>
-                    {aberto ? 'Fechar Time' : 'Gerenciar Pokémon'}
+
+                <div className="linha">
+                  <button onClick={() => alternarAberturaTime(time.id)}>
+                    {estaAberto ? 'Fechar' : 'Gerenciar Pokémon'}
                   </button>
-                  <button onClick={() => comecarEdicaoTime(t)}>Editar</button>
-                  <button onClick={() => excluirTime(t.id)}>Excluir</button>
+                  {timeEmEdicaoId !== time.id && (
+                    <button onClick={() => iniciarEdicaoTime(time)}>Editar</button>
+                  )}
+                  <button onClick={() => duplicarTime(time)}>Duplicar</button>
+                  <button onClick={() => excluirTime(time.id)}>Excluir</button>
                 </div>
               </div>
 
-              {aberto && (
-                <div
-                  style={{
-                    marginTop: 16,
-                    paddingTop: 16,
-                    borderTop: '1px solid #eee',
-                  }}
-                >
-                  <h3 style={{ marginTop: 0 }}>
-                    Pokémon do Time ({pokemonsDoTime.length}/6)
-                  </h3>
+              {/* Painel interno da equipe quando o time está aberto */}
+              {estaAberto && (
+                <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #eee' }}>
+                  <div className="espaco-entre" style={{ marginBottom: 10 }}>
+                    <h3 style={{ margin: 0 }}>Equipe ({membros.length}/6)</h3>
+                    {membros.length < 6 && (
+                      <Link to="/" style={{ fontSize: 13 }}>
+                        + Adicionar Pokémon pela Dex
+                      </Link>
+                    )}
+                  </div>
 
-                  {erroPokemon && <p style={{ color: '#c0392b' }}>{erroPokemon}</p>}
-
-                  {/* Formulário para adicionar Pokémon */}
-                  {pokemonsDoTime.length < 6 && (
-                    <form
-                      onSubmit={adicionarPokemon}
-                      style={{
-                        display: 'flex',
-                        gap: 10,
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                        background: '#f8f9fa',
-                        padding: 12,
-                        borderRadius: 10,
-                        marginBottom: 16,
-                      }}
-                    >
-                      <select
-                        value={regiaoSelect}
-                        onChange={(e) => aoMudarRegiaoSelect(e.target.value)}
-                        style={{ padding: 8 }}
-                      >
-                        <option value="todas">Todas as Regiões</option>
-                        {REGIOES.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.nome}
-                          </option>
-                        ))}
-                      </select>
-
-                      <select
-                        value={novoPokemonId}
-                        onChange={(e) => setNovoPokemonId(Number(e.target.value))}
-                        style={{ padding: 8, textTransform: 'capitalize' }}
-                      >
-                        {catalogoFiltrado.length > 0 ? (
-                          catalogoFiltrado.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              #{p.id} {p.nome}
-                            </option>
-                          ))
-                        ) : (
-                          <option value={1}>#1 Bulbasaur</option>
-                        )}
-                      </select>
-
-                      <input
-                        type="text"
-                        placeholder="Apelido (opcional)"
-                        value={novoApelido}
-                        maxLength={50}
-                        onChange={(e) => setNovoApelido(e.target.value)}
-                        style={{ padding: 8 }}
-                      />
-
-                      <select
-                        value={novaHabilidade}
-                        onChange={(e) => setNovaHabilidade(e.target.value)}
-                        style={{ padding: 8, textTransform: 'capitalize' }}
-                      >
-                        {habilidadesNovoPokemon.length === 0 ? (
-                          <option value="">Carregando habilidades...</option>
-                        ) : (
-                          habilidadesNovoPokemon.map((h) => (
-                            <option key={h.nome} value={h.nome}>
-                              {h.nome}
-                              {h.oculta ? ' (Oculta)' : ''}
-                            </option>
-                          ))
-                        )}
-                      </select>
-
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <input
-                          type="checkbox"
-                          checked={novoShiny}
-                          onChange={(e) => setNovoShiny(e.target.checked)}
-                        />
-                        Shiny ✨
-                      </label>
-
-                      <button type="submit" style={{ padding: '8px 14px' }}>
-                        Adicionar Pokémon
-                      </button>
-                    </form>
+                  {Object.keys(contagemTiposEquipe).length > 0 && (
+                    <div className="linha" style={{ marginBottom: 14, fontSize: 12 }}>
+                      <span style={{ color: '#666' }}>Tipagens na equipe:</span>
+                      {Object.entries(contagemTiposEquipe).map(([chaveTipo, qtd]) => (
+                        <span
+                          key={chaveTipo}
+                          className="etiqueta-tipo"
+                          style={{ background: TIPOS[chaveTipo]?.cor || '#777' }}
+                        >
+                          {TIPOS[chaveTipo]?.nome || chaveTipo} ×{qtd}
+                        </span>
+                      ))}
+                    </div>
                   )}
 
-                  {pokemonsDoTime.length === 0 && (
-                    <p style={{ color: '#666' }}>Este time ainda não possui Pokémon.</p>
+                  {erroMembro && <p className="msg-erro">{erroMembro}</p>}
+
+                  {membros.length === 0 && (
+                    <p style={{ fontSize: 14, color: '#666' }}>
+                      Nenhum Pokémon neste time ainda. Use a <Link to="/">Dex</Link> para escolher
+                      e adicionar.
+                    </p>
                   )}
 
-                  {/* Lista de Pokémon do Time */}
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-                      gap: 12,
-                    }}
-                  >
-                    {pokemonsDoTime.map((tp) => {
-                      const emEdicao = editandoPokemonId === tp.id;
-                      const especie = nomeDaEspecie(tp.pokemon_id);
-                      const habilidadesDisponiveis = habilidadesCache[tp.pokemon_id] || [];
-                      const somaEvAtual = CAMPOS_EV.reduce(
-                        (acc, c) => acc + Number(tp[c.chave] || 0),
+                  <div className="grade-equipe">
+                    {membros.map((membro, indice) => {
+                      const dadosEspecie = catalogo.find((p) => p.id === membro.pokemon_id);
+                      const nomeEspecie = dadosEspecie ? dadosEspecie.nome : `#${membro.pokemon_id}`;
+                      const tiposEspecie = dadosEspecie?.tipos || [];
+                      const estaEditandoMembro = membroEmEdicaoId === membro.id;
+
+                      const somaEvsSalvos = CAMPOS_EV.reduce(
+                        (total, campo) => total + Number(membro[campo.chave] || 0),
                         0
                       );
 
+                      const exibirShiny = estaEditandoMembro ? dadosEdicao.shiny : membro.shiny;
+                      const habilidadesDisponiveis =
+                        detalhesPorPokemon[membro.pokemon_id]?.habilidades || [];
+
                       return (
-                        <div
-                          key={tp.id}
-                          style={{
-                            border: '1px solid #e0e0e0',
-                            borderRadius: 10,
-                            padding: 12,
-                            background: '#fafafa',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div key={membro.id} className="card" style={{ background: '#fafafa' }}>
+                          <div className="linha">
                             <img
-                              src={imagemDoPokemon(
-                                tp.pokemon_id,
-                                emEdicao ? formPokemon.shiny : tp.shiny
-                              )}
+                              src={obterImagemPokemon(membro.pokemon_id, exibirShiny)}
                               onError={(e) => {
-                                e.currentTarget.onerror = null;
-                                e.currentTarget.src = imagemDoPokemon(tp.pokemon_id, false);
+                                e.currentTarget.src = obterImagemPokemon(membro.pokemon_id, false);
                               }}
-                              alt={especie}
-                              width="72"
-                              height="72"
+                              alt={nomeEspecie}
+                              width="68"
+                              height="68"
                             />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 700, textTransform: 'capitalize' }}>
-                                {tp.apelido ? tp.apelido : especie}{' '}
-                                {tp.shiny && <span title="Shiny">✨</span>}
+                            <div style={{ fontSize: 13 }}>
+                              <strong className="capitalizar">
+                                #{indice + 1} {membro.apelido || nomeEspecie} {membro.shiny && '✨'}
+                              </strong>
+                              <div className="capitalizar" style={{ color: '#666' }}>
+                                #{membro.pokemon_id} {nomeEspecie} (
+                                {obterRegiaoPorId(membro.pokemon_id).nome}) • Nv {membro.nivel}
                               </div>
-                              <div style={{ fontSize: 13, color: '#666', textTransform: 'capitalize' }}>
-                                #{tp.pokemon_id} {especie} ({regiaoDoPokemon(tp.pokemon_id).nome}) • Nível {tp.nivel}
-                              </div>
-                              {tp.habilidade && (
-                                <div
-                                  style={{
-                                    fontSize: 12,
-                                    color: '#444',
-                                    textTransform: 'capitalize',
-                                    marginTop: 2,
-                                  }}
-                                >
-                                  Habilidade: {tp.habilidade}
+
+                              {tiposEspecie.length > 0 && (
+                                <div className="linha" style={{ gap: 4, margin: '4px 0' }}>
+                                  {tiposEspecie.map((chaveTipo) => (
+                                    <span
+                                      key={chaveTipo}
+                                      className="etiqueta-tipo"
+                                      style={{ background: TIPOS[chaveTipo]?.cor || '#777' }}
+                                    >
+                                      {TIPOS[chaveTipo]?.nome || chaveTipo}
+                                    </span>
+                                  ))}
                                 </div>
                               )}
-                              <div style={{ fontSize: 12, color: '#555', marginTop: 4 }}>
-                                EVs: {tp.ev_hp}/{tp.ev_atk}/{tp.ev_def}/{tp.ev_spa}/{tp.ev_spd}/
-                                {tp.ev_spe} ({somaEvAtual}/510)
+
+                              {membro.habilidade && (
+                                <div className="capitalizar">Habilidade: {membro.habilidade}</div>
+                              )}
+                              <div>
+                                EVs: {CAMPOS_EV.map((campo) => membro[campo.chave]).join('/')} (
+                                {somaEvsSalvos}/510)
                               </div>
                             </div>
                           </div>
 
-                          {!emEdicao ? (
-                            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                              <button onClick={() => comecarEdicaoPokemon(tp)}>
-                                Editar
-                              </button>
-                              <button onClick={() => removerPokemon(tp.id)}>Remover</button>
+                          {!estaEditandoMembro ? (
+                            <div className="espaco-entre" style={{ marginTop: 10 }}>
+                              <div className="linha">
+                                <button onClick={() => iniciarEdicaoMembro(membro)}>Editar</button>
+                                <button onClick={() => removerMembro(membro.id)}>Remover</button>
+                              </div>
+
+                              <div className="linha" style={{ gap: 4 }}>
+                                <button
+                                  type="button"
+                                  title="Mover para antes"
+                                  disabled={indice === 0}
+                                  onClick={() => moverMembro(indice, -1)}
+                                >
+                                  ←
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Mover para depois"
+                                  disabled={indice === membros.length - 1}
+                                  onClick={() => moverMembro(indice, 1)}
+                                >
+                                  →
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             <form
-                              onSubmit={(e) => salvarEdicaoPokemon(e, tp)}
-                              style={{
-                                marginTop: 12,
-                                paddingTop: 10,
-                                borderTop: '1px solid #ddd',
-                                display: 'grid',
-                                gap: 8,
-                              }}
+                              onSubmit={salvarEdicaoMembro}
+                              style={{ marginTop: 10, display: 'grid', gap: 8 }}
                             >
-                              <label style={{ fontSize: 13 }}>
-                                Nome / Apelido:
-                                <input
-                                  type="text"
-                                  placeholder={especie}
-                                  value={formPokemon.apelido}
-                                  maxLength={50}
-                                  onChange={(e) =>
-                                    setFormPokemon({ ...formPokemon, apelido: e.target.value })
-                                  }
-                                  style={{
-                                    width: '100%',
-                                    padding: 6,
-                                    marginTop: 2,
-                                    boxSizing: 'border-box',
-                                  }}
-                                />
-                              </label>
+                              <input
+                                placeholder="Apelido"
+                                value={dadosEdicao.apelido}
+                                onChange={(e) =>
+                                  setDadosEdicao({ ...dadosEdicao, apelido: e.target.value })
+                                }
+                              />
 
-                              <label style={{ fontSize: 13 }}>
-                                Habilidade:
-                                <select
-                                  value={formPokemon.habilidade}
-                                  onChange={(e) =>
-                                    setFormPokemon({ ...formPokemon, habilidade: e.target.value })
-                                  }
-                                  style={{
-                                    width: '100%',
-                                    padding: 6,
-                                    marginTop: 2,
-                                    boxSizing: 'border-box',
-                                    textTransform: 'capitalize',
-                                  }}
-                                >
-                                  <option value="">Padrão / Não definida</option>
-                                  {habilidadesDisponiveis.map((h) => (
-                                    <option key={h.nome} value={h.nome}>
-                                      {h.nome}
-                                      {h.oculta ? ' (Oculta)' : ''}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
+                              <select
+                                className="capitalizar"
+                                value={dadosEdicao.habilidade}
+                                onChange={(e) =>
+                                  setDadosEdicao({ ...dadosEdicao, habilidade: e.target.value })
+                                }
+                              >
+                                <option value="">Habilidade padrão</option>
+                                {habilidadesDisponiveis.map((hab) => (
+                                  <option key={hab.nome} value={hab.nome}>
+                                    {hab.nome}
+                                    {hab.oculta ? ' (Oculta)' : ''}
+                                  </option>
+                                ))}
+                              </select>
 
-                              <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-                                <label
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 6,
-                                    fontSize: 13,
-                                  }}
-                                >
+                              <div className="linha">
+                                <label className="linha" style={{ fontSize: 13 }}>
                                   <input
                                     type="checkbox"
-                                    checked={formPokemon.shiny}
+                                    checked={dadosEdicao.shiny}
                                     onChange={(e) =>
-                                      setFormPokemon({ ...formPokemon, shiny: e.target.checked })
+                                      setDadosEdicao({ ...dadosEdicao, shiny: e.target.checked })
                                     }
                                   />
                                   Shiny ✨
@@ -664,58 +569,69 @@ function Times() {
                                     type="number"
                                     min={1}
                                     max={100}
-                                    value={formPokemon.nivel}
+                                    value={dadosEdicao.nivel}
                                     onChange={(e) =>
-                                      setFormPokemon({ ...formPokemon, nivel: e.target.value })
+                                      setDadosEdicao({ ...dadosEdicao, nivel: e.target.value })
                                     }
-                                    style={{ width: 60, padding: 4 }}
+                                    style={{ width: 65 }}
                                   />
                                 </label>
                               </div>
 
-                              <div>
-                                <div
-                                  style={{
-                                    fontSize: 13,
-                                    fontWeight: 600,
-                                    marginBottom: 4,
-                                    color: totalEvs > 510 ? '#c0392b' : '#333',
-                                  }}
-                                >
-                                  EVs (Total: {totalEvs} / 510)
-                                </div>
-                                <div
-                                  style={{
-                                    display: 'grid',
-                                    gridTemplateColumns: 'repeat(3, 1fr)',
-                                    gap: 6,
-                                  }}
-                                >
-                                  {CAMPOS_EV.map((c) => (
-                                    <label key={c.chave} style={{ fontSize: 12 }}>
-                                      {c.label}
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        max={252}
-                                        value={formPokemon[c.chave]}
-                                        onChange={(e) => atualizarEv(c.chave, e.target.value)}
-                                        style={{
-                                          width: '100%',
-                                          padding: 4,
-                                          boxSizing: 'border-box',
-                                        }}
-                                      />
-                                    </label>
-                                  ))}
+                              <div className="espaco-entre">
+                                <span style={{ fontSize: 12, fontWeight: 600 }}>
+                                  EVs ({somaEvsEdicao}/510):
+                                </span>
+                                <div className="linha" style={{ gap: 4 }}>
+                                  <button
+                                    type="button"
+                                    onClick={distribuirEvsAutomatico}
+                                    style={{ fontSize: 11, padding: '4px 8px' }}
+                                  >
+                                    252 / 252 / 4
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={zerarEvsEdicao}
+                                    style={{ fontSize: 11, padding: '4px 8px' }}
+                                  >
+                                    Zerar
+                                  </button>
                                 </div>
                               </div>
 
-                              <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                                <button type="submit" disabled={totalEvs > 510}>
+                              <div
+                                style={{
+                                  display: 'grid',
+                                  gridTemplateColumns: 'repeat(3, 1fr)',
+                                  gap: 6,
+                                }}
+                              >
+                                {CAMPOS_EV.map((campo) => (
+                                  <label key={campo.chave} style={{ fontSize: 11 }}>
+                                    {campo.label}
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      max={252}
+                                      value={dadosEdicao[campo.chave]}
+                                      onChange={(e) =>
+                                        setDadosEdicao({
+                                          ...dadosEdicao,
+                                          [campo.chave]: Number(e.target.value) || 0,
+                                        })
+                                      }
+                                      style={{ width: '100%' }}
+                                    />
+                                  </label>
+                                ))}
+                              </div>
+
+                              <div className="linha">
+                                <button type="submit" disabled={somaEvsEdicao > 510}>
                                   Salvar
                                 </button>
-                                <button type="button" onClick={() => setEditandoPokemonId(null)}>
+                                <button type="button" onClick={() => setMembroEmEdicaoId(null)}>
                                   Cancelar
                                 </button>
                               </div>

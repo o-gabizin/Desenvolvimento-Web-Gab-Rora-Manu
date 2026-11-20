@@ -9,10 +9,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get('/', (req, res) => {
-  res.json({ mensagem: 'API Pokedex Kalos funcionando' });
-});
-
 app.use('/times', timesRoutes);
 app.use('/', timePokemonRoutes);
 

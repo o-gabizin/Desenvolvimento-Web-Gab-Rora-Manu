@@ -1,11 +1,158 @@
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
-  font-family: Arial, sans-serif;
-  background: #f2f2f2;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #f2f4f7;
   color: #222;
 }
 
-a {
+input, select, button {
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+button {
+  background: #fff;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.navbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: #c0392b;
+  color: #fff;
+  padding: 12px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.navbar a {
+  color: #fff;
   text-decoration: none;
-  color: inherit;
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.navbar a.active {
+  background: rgba(255, 255, 255, 0.22);
+  font-weight: 700;
+}
+
+.container {
+  padding: 20px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.linha {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.espaco-entre {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.grade-dex {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 14px;
+}
+
+.grade-equipe {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 12px;
+}
+
+.card-pokemon {
+  text-align: center;
+  cursor: pointer;
+  padding: 12px;
+}
+
+.etiqueta-tipo {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
+.barra-fundo {
+  flex: 1;
+  height: 8px;
+  background: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.barra-preenchimento {
+  height: 100%;
+  background: #3498db;
+}
+
+.modal-fundo {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+}
+
+.modal-conteudo {
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.capitalizar {
+  text-transform: capitalize;
+}
+
+.msg-erro {
+  color: #c0392b;
+  font-size: 13px;
+}
+
+.msg-sucesso {
+  color: #27ae60;
+  font-size: 13px;
 }

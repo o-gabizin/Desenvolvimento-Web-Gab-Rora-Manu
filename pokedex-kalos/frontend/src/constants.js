@@ -1,3 +1,4 @@
+export const API = 'http://localhost:3001';
 export const TOTAL_POKEMONS = 1025;
 
 export const REGIOES = [
@@ -13,30 +14,26 @@ export const REGIOES = [
   { id: 'paldea', nome: 'Paldea', inicio: 906, fim: 1025, cor: '#c0392b' },
 ];
 
-export function regiaoDoPokemon(id) {
-  return REGIOES.find((r) => id >= r.inicio && id <= r.fim) || REGIOES[0];
-}
-
-export const TIPOS_POKEMON = [
-  { chave: 'normal', nome: 'Normal', cor: '#A8A77A' },
-  { chave: 'fire', nome: 'Fogo', cor: '#EE8130' },
-  { chave: 'water', nome: 'Água', cor: '#6390F0' },
-  { chave: 'electric', nome: 'Elétrico', cor: '#F7D02C' },
-  { chave: 'grass', nome: 'Planta', cor: '#7AC74C' },
-  { chave: 'ice', nome: 'Gelo', cor: '#96D9D6' },
-  { chave: 'fighting', nome: 'Lutador', cor: '#C22E28' },
-  { chave: 'poison', nome: 'Venenoso', cor: '#A33EA1' },
-  { chave: 'ground', nome: 'Terrestre', cor: '#E2BF65' },
-  { chave: 'flying', nome: 'Voador', cor: '#A98FF3' },
-  { chave: 'psychic', nome: 'Psíquico', cor: '#F95587' },
-  { chave: 'bug', nome: 'Inseto', cor: '#A6B91A' },
-  { chave: 'rock', nome: 'Pedra', cor: '#B6A136' },
-  { chave: 'ghost', nome: 'Fantasma', cor: '#735797' },
-  { chave: 'dragon', nome: 'Dragão', cor: '#6F35FC' },
-  { chave: 'dark', nome: 'Sombrio', cor: '#705746' },
-  { chave: 'steel', nome: 'Aço', cor: '#B7B7CE' },
-  { chave: 'fairy', nome: 'Fada', cor: '#D685AD' },
-];
+export const TIPOS = {
+  normal: { nome: 'Normal', cor: '#A8A77A' },
+  fire: { nome: 'Fogo', cor: '#EE8130' },
+  water: { nome: 'Água', cor: '#6390F0' },
+  electric: { nome: 'Elétrico', cor: '#F7D02C' },
+  grass: { nome: 'Planta', cor: '#7AC74C' },
+  ice: { nome: 'Gelo', cor: '#96D9D6' },
+  fighting: { nome: 'Lutador', cor: '#C22E28' },
+  poison: { nome: 'Venenoso', cor: '#A33EA1' },
+  ground: { nome: 'Terrestre', cor: '#E2BF65' },
+  flying: { nome: 'Voador', cor: '#A98FF3' },
+  psychic: { nome: 'Psíquico', cor: '#F95587' },
+  bug: { nome: 'Inseto', cor: '#A6B91A' },
+  rock: { nome: 'Pedra', cor: '#B6A136' },
+  ghost: { nome: 'Fantasma', cor: '#735797' },
+  dragon: { nome: 'Dragão', cor: '#6F35FC' },
+  dark: { nome: 'Sombrio', cor: '#705746' },
+  steel: { nome: 'Aço', cor: '#B7B7CE' },
+  fairy: { nome: 'Fada', cor: '#D685AD' },
+};
 
 export const CAMPOS_EV = [
   { chave: 'ev_hp', label: 'HP' },
@@ -47,9 +44,98 @@ export const CAMPOS_EV = [
   { chave: 'ev_spe', label: 'Velocidade' },
 ];
 
-export function imagemDoPokemon(id, shiny = false) {
+export function obterRegiaoPorId(id) {
+  return REGIOES.find((regiao) => id >= regiao.inicio && id <= regiao.fim) || REGIOES[0];
+}
+
+export function obterImagemPokemon(id, shiny = false) {
   const pasta = shiny ? 'official-artwork/shiny' : 'official-artwork';
   return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/${pasta}/${id}.png`;
 }
 
-export const API = 'http://localhost:3001';
+let catalogoEmCache = null;
+const detalhesEmCache = {};
+
+export async function carregarCatalogoCompleto() {
+  if (catalogoEmCache) return catalogoEmCache;
+
+  const chavesTipos = Object.keys(TIPOS);
+
+  const [respostaLista, ...respostasTipos] = await Promise.all([
+    fetch(`https://pokeapi.co/api/v2/pokemon?limit=${TOTAL_POKEMONS}`),
+    ...chavesTipos.map((tipo) => fetch(`https://pokeapi.co/api/v2/type/${tipo}`)),
+  ]);
+
+  if (!respostaLista.ok) {
+    throw new Error('Falha ao carregar lista de Pokémon');
+  }
+
+  const dadosLista = await respostaLista.json();
+  const mapaTiposPorId = {};
+
+  for (let i = 0; i < chavesTipos.length; i++) {
+    const respostaTipo = respostasTipos[i];
+    if (!respostaTipo || !respostaTipo.ok) continue;
+
+    const dadosTipo = await respostaTipo.json();
+    const chaveTipo = chavesTipos[i];
+
+    for (const item of dadosTipo.pokemon) {
+      const partesUrl = item.pokemon.url.split('/').filter(Boolean);
+      const id = Number(partesUrl[partesUrl.length - 1]);
+
+      if (id >= 1 && id <= TOTAL_POKEMONS) {
+        if (!mapaTiposPorId[id]) mapaTiposPorId[id] = [];
+        mapaTiposPorId[id].push({ slot: item.slot, tipo: chaveTipo });
+      }
+    }
+  }
+
+  catalogoEmCache = dadosLista.results.map((pokemon, indice) => {
+    const id = indice + 1;
+    const tiposBrutos = mapaTiposPorId[id] || [];
+    const tiposOrdenados = tiposBrutos
+      .sort((a, b) => a.slot - b.slot)
+      .map((item) => item.tipo);
+
+    return {
+      id,
+      nome: pokemon.name,
+      regiaoId: obterRegiaoPorId(id).id,
+      tipos: tiposOrdenados,
+    };
+  });
+
+  return catalogoEmCache;
+}
+
+export async function buscarDetalhesPokemon(id) {
+  if (detalhesEmCache[id]) return detalhesEmCache[id];
+
+  const resposta = await fetch(`https://pokeapi.co/api/v2/pokemon/${id}`);
+  if (!resposta.ok) {
+    throw new Error('Erro ao carregar detalhes do Pokémon');
+  }
+
+  detalhesEmCache[id] = await resposta.json();
+  return detalhesEmCache[id];
+}
+
+export const ICONES_TIME = [
+  { id: 'poke-ball', nome: 'Poké Ball' },
+  { id: 'great-ball', nome: 'Great Ball' },
+  { id: 'ultra-ball', nome: 'Ultra Ball' },
+  { id: 'master-ball', nome: 'Master Ball' },
+  { id: 'premier-ball', nome: 'Premier Ball' },
+  { id: 'luxury-ball', nome: 'Luxury Ball' },
+  { id: 'cherish-ball', nome: 'Cherish Ball' },
+  { id: 'dusk-ball', nome: 'Dusk Ball' },
+  { id: 'quick-ball', nome: 'Quick Ball' },
+  { id: 'key-stone', nome: 'Key Stone' },
+  { id: 'rare-candy', nome: 'Rare Candy' },
+  { id: 'leftovers', nome: 'Leftovers' },
+];
+
+export function obterImagemIconeTime(iconeId = 'poke-ball') {
+  return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/${iconeId || 'poke-ball'}.png`;
+}
