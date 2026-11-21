@@ -10,7 +10,7 @@ Aplicação web para explorar a Pokédex (via PokéAPI) e montar **times de Pok�
 
 ## Tecnologias
 - **Frontend:** React 19, Vite, React Router
-- **Backend:** Node.js, Express 5, PostgreSQL (`pg`)
+- **Backend:** Node.js, Express 5, PostgreSQL (`pgAdmin`)
 - **API externa:** [PokéAPI](https://pokeapi.co) (catálogo, imagens e detalhes)
 
 ## Como rodar
