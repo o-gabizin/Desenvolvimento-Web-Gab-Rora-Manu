@@ -16,11 +16,17 @@ Aplicação web para explorar a Pokédex (via PokéAPI) e montar **times de Pok�
 ## Como rodar
 
 ### 1. Banco de dados
+
+Crie um banco chamado `pokedex` no PostgreSQL e execute o arquivo `backend/schema.sql`.
+
+**Pelo pgAdmin:** botão direito em *Databases* → *Create → Database...* → nome `pokedex`.
+Depois, botão direito no banco → *Query Tool* → abrir `backend/schema.sql` → executar (F5).
+
+**Pelo terminal (psql):**
 ```bash
 createdb pokedex
 psql -d pokedex -f backend/schema.sql
 ```
-
 ### 2. Backend
 ```bash
 cd backend
