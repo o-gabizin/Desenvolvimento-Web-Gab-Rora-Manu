@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import logo from '../img/PPlogoFull.png'
 
 function Navbar() {
   const estiloLink = ({ isActive }) => ({
@@ -28,12 +29,11 @@ function Navbar() {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <img
-          src="https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/poke-ball.png"
+          src={logo}
           alt="Logo Pokédex"
-          width="32"
-          height="32"
+          width="128"
+          height="40"
         />
-        <strong style={{ fontSize: 18 }}>Pokédex</strong>
       </div>
 
       <div style={{ display: 'flex', gap: 12 }}>
